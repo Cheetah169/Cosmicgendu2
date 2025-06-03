@@ -110,12 +110,39 @@ class DorkParser:
                     chrome_options.add_argument(f'--proxy-server=http://{ip}:{port}')
                     # Note: Chrome doesn't support auth via command line, would need extension
                     
-            # Setup ChromeDriver path
+            # Setup ChromeDriver path with fix for Linux path issue
             try:
-                service = Service(ChromeDriverManager().install())
+                # Get the driver path
+                driver_path = ChromeDriverManager().install()
+                
+                # Fix for Linux path issue - ensure we get the correct executable
+                if os.path.exists(driver_path):
+                    # Check if it's a directory (common issue)
+                    if os.path.isdir(driver_path):
+                        # Look for chromedriver executable in the directory
+                        possible_paths = [
+                            os.path.join(driver_path, 'chromedriver'),
+                            os.path.join(driver_path, 'chromedriver-linux64', 'chromedriver'),
+                        ]
+                        for path in possible_paths:
+                            if os.path.exists(path) and os.access(path, os.X_OK):
+                                driver_path = path
+                                break
+                    
+                    # Make sure it's executable
+                    if not os.access(driver_path, os.X_OK):
+                        os.chmod(driver_path, 0o755)
+                        
+                self.logger.info(f"Using ChromeDriver at: {driver_path}")
+                service = Service(driver_path)
+                
             except Exception as e:
                 self.logger.error(f"Failed to setup ChromeDriver: {e}")
-                return None
+                # Fallback: try to use system chromedriver
+                try:
+                    service = Service('/usr/bin/chromedriver')
+                except:
+                    return None
                 
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
